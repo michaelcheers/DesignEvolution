@@ -9,6 +9,7 @@ namespace DesignEvolution
 {
     public class Organism
     {
+        public int organismIndex;
         public OrganismDesign Design;
         public float Energy;
         public List<OrganismPiece> Pieces = new List<OrganismPiece>();
@@ -19,9 +20,7 @@ namespace DesignEvolution
 
         public Point WorldPos (Point point)
         {
-            Point @new = Position + point;
-            @new.X = (@new.X + Game1.worldSize.X) % Game1.worldSize.X;
-            return @new;
+            return new Point((Position.X + point.X + Game1.worldSize.X) % Game1.worldSize.X, Position.Y + point.Y); 
         }
 
         public Point LocalPos (Point point)
@@ -93,7 +92,7 @@ namespace DesignEvolution
                 case 3: // add a block
                     {
                         OrganismDesign.GrowPattern p = new OrganismDesign.GrowPattern();
-                        p.blockType = (BlockType)(Game1.rnd.Next(6) + 1);
+                        p.blockType = (BlockType)(Game1.rnd.Next(7) + 1);
                         p.direction = (Direction)(Game1.rnd.Next(4));
                         p.blockNum = Game1.rnd.Next(growPattern.Count);
                         growPattern.Add(p);
@@ -116,52 +115,91 @@ namespace DesignEvolution
             return copy;
         }
 
-        static readonly EnumArray<BlockType, byte> blocks = new EnumArray<BlockType, byte>
+        int GetGrowCost(BlockType type)
+        {
+            switch(type)
+            {
+                case BlockType.Heart: return 20;
+                case BlockType.Bone: return 10;
+                default: return 1;
+            }
+        }
+
+        /*
+        static readonly EnumArray<BlockType, byte> growCosts = new EnumArray<BlockType, byte>
         {
             {BlockType.Leaf, 1 },
             {BlockType.Heart, 20 },
-            {BlockType.Grower, 1 },
+           // {BlockType.Grower, 1 },
             {BlockType.Engine, 1 },
             {BlockType.Buoyancy, 1 },
-            {BlockType.Bone, 1 }
-        };
+            {BlockType.Bone, 10 },
+            {BlockType.Sinker, 1 },
+        };*/
 
-        public bool Grow(Point positionRelativeToHeart, BlockType blockType, Game1 game, bool reproduce = true)
+        public bool Grow(Point positionRelativeToHeart, BlockType blockType, Game1 game, bool reproduce = true, int pieceIdx = 0)
         {
-            Point newPos = WorldPos(positionRelativeToHeart);
-            if (newPos.Y < 0 || newPos.Y >= 480)
+            if (Pieces.Count > 15)
                 return false;
+
+            int growCost = GetGrowCost(blockType);
+            if (Energy < growCost)
+                return false;
+
+            Point newPos = WorldPos(positionRelativeToHeart);
+            if (newPos.Y < 0 || newPos.Y >= Game1.worldHeight)
+                return true;
+
             if ((game.Blocks[newPos.X, newPos.Y].Controller != null &&
                 blockType != BlockType.None))
-                return false;
-            if (Energy - blocks[blockType] < 0)
-                return false;
-            Energy -= blocks[blockType];
-            if (blockType != BlockType.Heart || !reproduce)
+                return true;
+
+            Energy -= growCost;
+
+            if (blockType == BlockType.Heart && reproduce)
             {
-                if (blockType == BlockType.Buoyancy)
-                    MovePressure.Y++;
-                else if (blockType == BlockType.Bone)
-                    MovePressure.Y--;
-                else if (blockType == BlockType.Engine)
-                {
-                    if (positionRelativeToHeart.X >= 0)
-                        MovePressure.X++;
-                    else
-                        MovePressure.X--;
-                }
-                Pieces.Add(new OrganismPiece
-                {
-                    Position = positionRelativeToHeart,
-                    BlockType = blockType
-                });
-                game.Blocks[newPos.X, newPos.Y].Controller = this;
-                game.Blocks[newPos.X, newPos.Y].Type = blockType;
-                game.Blocks[newPos.X, newPos.Y].EnergyAmount = 0;
-                Energy += game.Blocks[newPos.X, newPos.Y].EnergyAmount;
+                game.AddOrganism(Create(Mutate(Design), newPos, game));
+                return true;
+            }
+
+            if (blockType == BlockType.Buoyancy)
+                MovePressure.Y++;
+            else if (blockType == BlockType.Sinker)
+                MovePressure.Y--;
+            else if (blockType == BlockType.Engine)
+            {
+                if (positionRelativeToHeart.X >= 0)
+                    MovePressure.X++;
+                else
+                    MovePressure.X--;
+            }
+
+            OrganismPiece newPiece = new OrganismPiece
+            {
+                Position = positionRelativeToHeart,
+                BlockType = blockType
+            };
+
+            /*
+            if(Pieces.FindIndex(p=> p.Position == positionRelativeToHeart) != -1)
+            {
+                int breakhere = 1;
+            }*/
+
+            if (pieceIdx < Pieces.Count)
+            {
+                Pieces.Add(Pieces[pieceIdx]);
+                Pieces[pieceIdx] = newPiece;
             }
             else
-                game.Organisms.Add(Create(Mutate(Design), newPos, game));
+            {
+                Pieces.Add(newPiece);
+            }
+
+            game.Blocks[newPos.X, newPos.Y].Controller = this;
+            game.Blocks[newPos.X, newPos.Y].Type = blockType;
+            game.Blocks[newPos.X, newPos.Y].EnergyAmount = 0;
+            Energy += game.Blocks[newPos.X, newPos.Y].EnergyAmount;
             return true;
         }
 
@@ -184,22 +222,29 @@ namespace DesignEvolution
                 game.Blocks[toCheck.X, toCheck.Y].Type = BlockType.None;
             }
             Position = WorldPos(offsetMovePosition);
-            foreach (OrganismPiece piece in Pieces.ToList())
+            OrganismPiece[] piecesCopy = new OrganismPiece[Pieces.Count];
+            Pieces.CopyTo(piecesCopy);
+            foreach (OrganismPiece piece in piecesCopy)
             {
                 Point toCheck = WorldPos(piece.Position);
                 Block oldBlock = game.Blocks[toCheck.X, toCheck.Y];
-                if (oldBlock.Type == BlockType.Bone)
+                if (oldBlock.Type != BlockType.None)
                 {
-                    // remove this piece from me
-                    DestroyBlock(toCheck, game);
-                    if (dead)
-                        return false;
-                    continue;
-                }
-                else if(oldBlock.Controller != null)
-                {
-                    // remove this piece from the other organism
-                    oldBlock.Controller.DestroyBlock(toCheck, game);
+                    bool oldBone = oldBlock.Type == BlockType.Bone;
+                    bool newBone = piece.BlockType == BlockType.Bone;
+                    if ((oldBone && !newBone) || (oldBone == newBone && Game1.rnd.Next(10) == 0))
+                    {
+                        // remove this piece from me
+                        DestroyBlock(toCheck, game);
+                        if (dead)
+                            return false;
+                        continue;
+                    }
+                    else if (oldBlock.Controller != null)
+                    {
+                        // remove this piece from the other organism
+                        oldBlock.Controller.DestroyBlock(toCheck, game);
+                    }
                 }
                 game.Blocks[toCheck.X, toCheck.Y].Controller = this;
                 game.Blocks[toCheck.X, toCheck.Y].Type = piece.BlockType;
@@ -218,24 +263,35 @@ namespace DesignEvolution
             }
             game.Blocks[absolutePosition.X, absolutePosition.Y].EnergyAmount += 5;
             Point posToDestroy = LocalPos(absolutePosition);
-            var piece = Pieces.First(v => v.Position == posToDestroy);
-            if (piece.BlockType == BlockType.Heart)
+            for(int pieceIdx = 0; pieceIdx < Pieces.Count; ++pieceIdx)
             {
-                Die(game);
+                OrganismPiece piece = Pieces[pieceIdx];
+                if (piece.Position != posToDestroy)
+                    continue;
+
+                switch(piece.BlockType)
+                {
+                    case BlockType.Heart:
+                        Die(game);
+                        return;
+                    case BlockType.Buoyancy:
+                        MovePressure.Y--;
+                        break;
+                    case BlockType.Sinker:
+                        MovePressure.Y++;
+                        break;
+                    case BlockType.Engine:
+                        if (posToDestroy.X >= 0)
+                            MovePressure.X--;
+                        else
+                            MovePressure.X++;
+                        break;
+                    case BlockType.Bone:
+                        break;
+                }
+                Pieces.RemoveAt(pieceIdx);
                 return;
             }
-            if (piece.BlockType == BlockType.Buoyancy)
-                MovePressure.Y--;
-            else if (piece.BlockType == BlockType.Bone)
-                MovePressure.Y++;
-            else if( piece.BlockType == BlockType.Engine)
-            {
-                if (posToDestroy.X >= 0)
-                    MovePressure.X--;
-                else
-                    MovePressure.X++;
-            }
-            Pieces.Remove(piece);
         }
 
         public int Age = 0;
@@ -276,45 +332,54 @@ namespace DesignEvolution
 
         public void Die (Game1 game)
         {
-            game.Organisms.Remove(this);
+            dead = true;
+            game.RemoveOrganism(this);
             game.Blocks[Position.X, Position.Y].EnergyAmount += (byte)Energy;
             foreach (var piece in Pieces)
             {
                 Point pos = WorldPos(piece.Position);
                 var block = game.Blocks[pos.X, pos.Y];
-                block.Controller = null;
-                block.EnergyAmount += blocks[piece.BlockType];
-                block.Type = BlockType.None;
-                game.Blocks[pos.X, pos.Y] = block;
+                if (block.Controller == this) // this function might be called while the organism is halfway through moving
+                {
+                    block.Controller = null;
+                    block.EnergyAmount += (byte)GetGrowCost(piece.BlockType);
+                    block.Type = BlockType.None;
+                    game.Blocks[pos.X, pos.Y] = block;
+                }
             }
-            dead = true;
         }
 
         public bool dead;
         
         public void Update (Game1 game)
         {
-            if (dead)
-                return;
-            Move(-MovePressure, game);
+            Move(-MovePressure*0.5f, game);
             Age++;
             if (Age > 1000)
             {
                 Die(game);
             }
-            else
+            else if(!dead)
             {
                 if(nextGrow < Design.GrowPatterns.Count)
                 {
                     OrganismDesign.GrowPattern pattern = Design.GrowPatterns[nextGrow];
-                    Point pos = Pieces.Count == 0 ? Point.Zero : Pieces[Math.Min(pattern.blockNum, Pieces.Count - 1)].Position + Game1.ToPoint(pattern.direction);
-                    if (Grow(pos, pattern.blockType, game))
+                    if (pattern.blockType == BlockType.NextGrow)
                     {
-                        nextGrow++;
+                        nextGrow = pattern.blockNum % Design.GrowPatterns.Count;
+                    }
+                    else
+                    {
+                        int pieceIdx = Math.Min(pattern.blockNum, Pieces.Count - 1);
+                        Point pos = Pieces.Count == 0 ? Point.Zero : Pieces[pieceIdx].Position + Game1.ToPoint(pattern.direction);
+                        if (Grow(pos, pattern.blockType, game, pieceIdx:pieceIdx))
+                        {
+                            nextGrow++;
+                        }
                     }
                 }
 
-                foreach (var piece in Pieces.ToList())
+                foreach (var piece in Pieces)
                 {
                     Point pos = WorldPos(piece.Position);
                     if (game.Blocks[pos.X, pos.Y].EnergyAmount > 0)
@@ -324,12 +389,14 @@ namespace DesignEvolution
                     }
                     if (piece.BlockType == BlockType.Leaf)
                         Energy += game.Blocks[pos.X, pos.Y].SunlightAmount / 1000f;
+                    else if (piece.BlockType == BlockType.Bone)
+                        Energy -= 0.1f;
                     else if (piece.BlockType == BlockType.Engine)
-                        Energy -= 0.3f;
-                    else if (piece.BlockType == BlockType.Grower)
+                        Energy -= 0.0f;
+                   /* else if (piece.BlockType == BlockType.Grower)
                     {
                         RunGrower(piece.Position, game);
-                    }
+                    }*/
                 }
             }
         }
@@ -356,7 +423,7 @@ namespace DesignEvolution
             if (copyType == BlockType.None)
                 return;
 
-            if (Energy < blocks[copyType])
+            if (Energy < GetGrowCost(copyType))
                 return;
 
             Point localCopyToPos = growerPos;
@@ -365,7 +432,7 @@ namespace DesignEvolution
             {
                 localCopyToPos += growDir;
                 Point copyToPos = WorldPos(localCopyToPos);
-                if (copyToPos.Y < 0 || copyToPos.Y >= 480)
+                if (copyToPos.Y < 0 || copyToPos.Y >= Game1.worldHeight)
                 {
                     return;
                 }

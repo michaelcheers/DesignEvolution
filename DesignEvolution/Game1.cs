@@ -14,11 +14,14 @@ namespace DesignEvolution
     {
         GraphicsDeviceManager graphics;
         SpriteBatch spriteBatch;
-        public Block[,] Blocks = new Block[640, 480];
+        public const int worldWidth = 1920 / 3;
+        public const int worldHeight = 1080 / 3;
+        public Block[,] Blocks = new Block[worldWidth, worldHeight];
+        Queue<int> freeOrganismSlots = new Queue<int>();
         public List<Organism> Organisms = new List<Organism>();
         public event Action OnUpdate;
 
-        public static readonly Point worldSize = new Point(640, 480);
+        public static readonly Point worldSize = new Point(worldWidth, worldHeight);
 
         public static Point ToPoint (Direction direction)
         {
@@ -41,15 +44,37 @@ namespace DesignEvolution
         {
             graphics = new GraphicsDeviceManager(this)
             {
-                PreferredBackBufferWidth = 640,
-                PreferredBackBufferHeight = 480
+                PreferredBackBufferWidth = 1920,
+                PreferredBackBufferHeight = 1080,
+                IsFullScreen = true,
             };
             Content.RootDirectory = "Content";
             IsMouseVisible = true;
         }
 
+        public void AddOrganism(Organism o)
+        {
+            if (freeOrganismSlots.Count > 0)
+            {
+                o.organismIndex = freeOrganismSlots.Dequeue();
+                Organisms[o.organismIndex] = o;
+            }
+            else
+            {
+                o.organismIndex = Organisms.Count;
+                Organisms.Add(o);
+            }
+        }
+
+
+        public void RemoveOrganism(Organism o)
+        {
+            Organisms[o.organismIndex] = null;
+            freeOrganismSlots.Enqueue(o.organismIndex);
+        }
+
         Texture2D rectangle;
-        public static Random rnd = new Random();
+        public static Random rnd;
 
         /// <summary>
         /// Allows the game to perform any initialization it needs to before starting to run.
@@ -59,6 +84,11 @@ namespace DesignEvolution
         /// </summary>
         protected override void Initialize()
         {
+            int seed = new Random().Next();
+            System.IO.File.WriteAllText("seed.txt", seed.ToString());
+
+            rnd = new Random(seed);
+
             /*Organisms.Add(Organism.Create(
                 new OrganismDesign
                 {
@@ -96,8 +126,8 @@ namespace DesignEvolution
                 }, new Point(100, 476), this
             ));*/
 
-            
-                        Organisms.Add(Organism.Create(
+
+            Organisms.Add(Organism.Create(
                             new OrganismDesign
                             {
                                 GrowPatterns = new List<OrganismDesign.GrowPattern>
@@ -110,34 +140,40 @@ namespace DesignEvolution
                                     },
                                     new OrganismDesign.GrowPattern
                                     {
-                                        blockNum = 1,
+                                        blockNum = 0,
                                         blockType = BlockType.Heart,
                                         direction = Direction.Right
                                     },
 
                                     new OrganismDesign.GrowPattern
                                     {
-                                        blockNum = 1,
+                                        blockNum = 0,
                                         blockType = BlockType.Heart,
                                         direction = Direction.Up
                                     },
                                     new OrganismDesign.GrowPattern
                                     {
-                                        blockNum = 1,
+                                        blockNum = 0,
                                         blockType = BlockType.Heart,
                                         direction = Direction.Down
-                                    }
+                                    },
+                                    /*new OrganismDesign.GrowPattern
+                                    {
+                                        blockNum = 0,
+                                        blockType = BlockType.Bone,
+                                        direction = Direction.Down
+                                    }*/
                                 }
                             }
                             , new Point(100, 100), this));
 
-            toDraw = new Texture2D(GraphicsDevice, 640, 480);
+            toDraw = new Texture2D(GraphicsDevice, worldWidth, worldHeight);
             UpdateFoodAndLight();
 
             base.Initialize();
         }
         DateTime nextUpdateOfTexture = DateTime.Now;
-        Color[] lightPixels = new Color[640 * 480];
+        Color[] lightPixels = new Color[worldWidth * worldHeight];
 
         /// <summary>
         /// LoadContent will be called once per game and is the place to load
@@ -186,6 +222,12 @@ namespace DesignEvolution
                     UpdateFoodAndLightTexture();
                 }
             }
+            else if (input.WasKeyJustPressed(Keys.Right))
+            {
+                Step();
+                UpdateFoodAndLightTexture();
+                paused = true;
+            }
 
             if (input.MouseWheelDelta != 0)
             {
@@ -197,24 +239,33 @@ namespace DesignEvolution
 
             if (!paused)
             {
-                UpdateFoodAndLight();
-                foreach (var org in Organisms.ToArray())
-                    org.Update(this);
-                OnUpdate?.Invoke();
+                Step();
             }
 
             base.Update(gameTime);
         }
 
+        void Step()
+        {
+            UpdateFoodAndLight();
+            foreach (var org in Organisms.ToArray())
+            {
+                if (org != null && !org.dead)
+                    org.Update(this);
+            }
+            OnUpdate?.Invoke();
+        }
+
         void UpdateFoodAndLightTexture ()
         {
-            for (int y = 0; y < 480; y++)
+            for (int x = 0; x < worldWidth; x++)
             {
-                for (int x = 0; x < 640; x++)
+                for (int y = 0; y < worldHeight; y++)
                 {
-                    byte sun = Blocks[x, y].SunlightAmount;
-                    byte food = Blocks[x, y].EnergyAmount;
-                    lightPixels[x + y * 640] = new Color(sun/2, food, 128+sun/2);
+                    Block b = Blocks[x, y];
+                    byte sun = b.SunlightAmount;
+                    byte food = b.EnergyAmount;
+                    lightPixels[x + y * worldWidth] = new Color(sun/2, food, 128+sun/2);
                 }
             }
             toDraw.SetData(lightPixels);
@@ -258,9 +309,9 @@ namespace DesignEvolution
                     */
 
                     if (Blocks[x, y - 1].Type == BlockType.None)
-                        Blocks[x, y].SunlightAmount = (byte)Math.Max(0, Blocks[x, y - 1].SunlightAmount - 1);
+                        Blocks[x, y].SunlightAmount = (byte)Math.Max(0, Blocks[x, y - 1].SunlightAmount - ((y%2==0)?1:0));
                     else
-                        Blocks[x, y].SunlightAmount = (byte)Math.Max(0, Blocks[x, y - 1].SunlightAmount - 20);
+                        Blocks[x, y].SunlightAmount = (byte)Math.Max(0, Blocks[x, y - 1].SunlightAmount - ((y % 2 == 0) ? 2 : 1));
                 }
             }
             if (DateTime.Now >= nextUpdateOfTexture)
@@ -275,13 +326,14 @@ namespace DesignEvolution
             {BlockType.None, Color.Yellow },
             {BlockType.Leaf, Color.DarkGreen },
             {BlockType.Heart, Color.DarkRed },
-            {BlockType.Grower, Color.Purple },
+           // {BlockType.Grower, Color.Purple },
             {BlockType.Engine, Color.Gray },
             {BlockType.Buoyancy, Color.White },
-            {BlockType.Bone, Color.Black }
+            {BlockType.Bone, Color.Magenta },
+            {BlockType.Sinker, Color.Black }
         };
 
-        float zoom = 1;
+        float zoom = 3;
         Vector2 offset;
 
         public static int Clamp(int n, int min, int max)

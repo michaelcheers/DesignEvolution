@@ -12,8 +12,10 @@ namespace DesignEvolution
         Buoyancy,
         Leaf,
         Engine,
-        Grower,
+//        Grower,
         Heart,
-        Bone
+        Bone,
+        Sinker,
+        NextGrow,
     }
 }
