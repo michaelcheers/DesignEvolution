@@ -44,9 +44,9 @@ namespace DesignEvolution
         {
             graphics = new GraphicsDeviceManager(this)
             {
-                PreferredBackBufferWidth = 1920,
-                PreferredBackBufferHeight = 1080,
-                IsFullScreen = true,
+                PreferredBackBufferWidth = worldWidth*3,
+                PreferredBackBufferHeight = worldHeight*3,
+                //IsFullScreen = true,
             };
             Content.RootDirectory = "Content";
             IsMouseVisible = true;
@@ -67,10 +67,10 @@ namespace DesignEvolution
         }
 
 
-        public void RemoveOrganism(Organism o)
+        public void RemoveOrganism(int index)
         {
-            Organisms[o.organismIndex] = null;
-            freeOrganismSlots.Enqueue(o.organismIndex);
+            Organisms[index] = new Organism() { dead = true };
+            freeOrganismSlots.Enqueue(index);
         }
 
         Texture2D rectangle;
@@ -125,7 +125,9 @@ namespace DesignEvolution
                     }
                 }, new Point(100, 476), this
             ));*/
-
+            for (int x = 0; x < worldWidth; x++)
+                for (int y = 0; y < worldHeight; y++)
+                    Blocks[x, y].ControllerIdx = -1;
 
             Organisms.Add(Organism.Create(
                             new OrganismDesign
@@ -248,19 +250,20 @@ namespace DesignEvolution
         void Step()
         {
             UpdateFoodAndLight();
-            foreach (var org in Organisms.ToArray())
+            for(int Idx = 0; Idx < Organisms.Count; ++Idx)
             {
-                if (org != null && !org.dead)
-                    org.Update(this);
+                Organism localOrg = Organisms[Idx];
+                if (!localOrg.dead)
+                    Organisms[Idx] = localOrg.Update(this);
             }
             OnUpdate?.Invoke();
         }
 
         void UpdateFoodAndLightTexture ()
         {
-            for (int x = 0; x < worldWidth; x++)
+            for (int y = 0; y < worldHeight; y++)
             {
-                for (int y = 0; y < worldHeight; y++)
+                for (int x = 0; x < worldWidth; x++)
                 {
                     Block b = Blocks[x, y];
                     byte sun = b.SunlightAmount;

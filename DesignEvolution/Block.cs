@@ -9,7 +9,7 @@ namespace DesignEvolution
     public struct Block
     {
         public BlockType Type;
-        public Organism Controller;
+        public int ControllerIdx;
         public byte SunlightAmount, EnergyAmount;
     }
 }

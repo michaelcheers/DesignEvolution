@@ -7,16 +7,19 @@ using System.Threading.Tasks;
 
 namespace DesignEvolution
 {
-    public class Organism
+    public struct Organism
     {
-        public int organismIndex;
         public OrganismDesign Design;
+        public List<OrganismPiece> Pieces;
+
+        public int organismIndex;
         public float Energy;
-        public List<OrganismPiece> Pieces = new List<OrganismPiece>();
         public Point Position;
         public Vector2 FractionalPosition;
         public Vector2 MovePressure;
-        public int nextGrow = 0;
+        public short nextGrow;
+        public short Age;
+        public bool dead;
 
         public Point WorldPos (Point point)
         {
@@ -50,7 +53,7 @@ namespace DesignEvolution
                 if (piece.BlockType != BlockType.Bone)
                     continue;
                 Block block = game.Blocks[toCheck.X, toCheck.Y];
-                if (block.Type == BlockType.Bone && block.Controller != this && block.Controller != null)
+                if (block.Type == BlockType.Bone && block.ControllerIdx != organismIndex && block.ControllerIdx != -1)
                     return false;
             }
             return true;
@@ -91,11 +94,14 @@ namespace DesignEvolution
                     break;
                 case 3: // add a block
                     {
-                        OrganismDesign.GrowPattern p = new OrganismDesign.GrowPattern();
-                        p.blockType = (BlockType)(Game1.rnd.Next(7) + 1);
-                        p.direction = (Direction)(Game1.rnd.Next(4));
-                        p.blockNum = Game1.rnd.Next(growPattern.Count);
-                        growPattern.Add(p);
+                        if (growPattern.Count < 65535)
+                        {
+                            OrganismDesign.GrowPattern p = new OrganismDesign.GrowPattern();
+                            p.blockType = (BlockType)(Game1.rnd.Next(7) + 1);
+                            p.direction = (Direction)(Game1.rnd.Next(4));
+                            p.blockNum = Game1.rnd.Next(growPattern.Count);
+                            growPattern.Add(p);
+                        }
                     }
                     break;
                 case 4: // remove a block
@@ -150,7 +156,7 @@ namespace DesignEvolution
             if (newPos.Y < 0 || newPos.Y >= Game1.worldHeight)
                 return true;
 
-            if ((game.Blocks[newPos.X, newPos.Y].Controller != null &&
+            if ((game.Blocks[newPos.X, newPos.Y].ControllerIdx != -1 &&
                 blockType != BlockType.None))
                 return true;
 
@@ -196,7 +202,7 @@ namespace DesignEvolution
                 Pieces.Add(newPiece);
             }
 
-            game.Blocks[newPos.X, newPos.Y].Controller = this;
+            game.Blocks[newPos.X, newPos.Y].ControllerIdx = organismIndex;
             game.Blocks[newPos.X, newPos.Y].Type = blockType;
             game.Blocks[newPos.X, newPos.Y].EnergyAmount = 0;
             Energy += game.Blocks[newPos.X, newPos.Y].EnergyAmount;
@@ -218,7 +224,7 @@ namespace DesignEvolution
             foreach (OrganismPiece piece in Pieces)
             {
                 Point toCheck = WorldPos(piece.Position);
-                game.Blocks[toCheck.X, toCheck.Y].Controller = null;
+                game.Blocks[toCheck.X, toCheck.Y].ControllerIdx = -1;
                 game.Blocks[toCheck.X, toCheck.Y].Type = BlockType.None;
             }
             Position = WorldPos(offsetMovePosition);
@@ -240,13 +246,13 @@ namespace DesignEvolution
                             return false;
                         continue;
                     }
-                    else if (oldBlock.Controller != null)
+                    else if (oldBlock.ControllerIdx != -1)
                     {
                         // remove this piece from the other organism
-                        oldBlock.Controller.DestroyBlock(toCheck, game);
+                        game.Organisms[oldBlock.ControllerIdx].DestroyBlock(toCheck, game);
                     }
                 }
-                game.Blocks[toCheck.X, toCheck.Y].Controller = this;
+                game.Blocks[toCheck.X, toCheck.Y].ControllerIdx = organismIndex;
                 game.Blocks[toCheck.X, toCheck.Y].Type = piece.BlockType;
                 game.Blocks[toCheck.X, toCheck.Y].EnergyAmount = 0;
                 Energy += game.Blocks[toCheck.X, toCheck.Y].EnergyAmount;
@@ -256,9 +262,12 @@ namespace DesignEvolution
 
         public void DestroyBlock (Point absolutePosition, Game1 game)
         {
-            if (game.Blocks[absolutePosition.X, absolutePosition.Y].Controller == this)
+            if (dead)
+                return;
+
+            if (game.Blocks[absolutePosition.X, absolutePosition.Y].ControllerIdx == this.organismIndex)
             {
-                game.Blocks[absolutePosition.X, absolutePosition.Y].Controller = null;
+                game.Blocks[absolutePosition.X, absolutePosition.Y].ControllerIdx = -1;
                 game.Blocks[absolutePosition.X, absolutePosition.Y].Type = BlockType.None;
             }
             game.Blocks[absolutePosition.X, absolutePosition.Y].EnergyAmount += 5;
@@ -294,8 +303,6 @@ namespace DesignEvolution
             }
         }
 
-        public int Age = 0;
-
         public static Organism Create (OrganismDesign design, Point position, Game1 game)
         {
             Organism resulting = new Organism
@@ -303,7 +310,8 @@ namespace DesignEvolution
                 Position = position,
                 FractionalPosition = Vector2.Zero,
                 Design = design,
-                Energy = 38
+                Energy = 38,
+                Pieces = new List<OrganismPiece>(16)
             };
             resulting.CreateOrganism(design, game);
             return resulting;
@@ -333,25 +341,23 @@ namespace DesignEvolution
         public void Die (Game1 game)
         {
             dead = true;
-            game.RemoveOrganism(this);
+            game.RemoveOrganism(organismIndex);
             game.Blocks[Position.X, Position.Y].EnergyAmount += (byte)Energy;
             foreach (var piece in Pieces)
             {
                 Point pos = WorldPos(piece.Position);
                 var block = game.Blocks[pos.X, pos.Y];
-                if (block.Controller == this) // this function might be called while the organism is halfway through moving
+                if (block.ControllerIdx == this.organismIndex) // this function might be called while the organism is halfway through moving
                 {
-                    block.Controller = null;
+                    block.ControllerIdx = -1;
                     block.EnergyAmount += (byte)GetGrowCost(piece.BlockType);
                     block.Type = BlockType.None;
                     game.Blocks[pos.X, pos.Y] = block;
                 }
             }
         }
-
-        public bool dead;
         
-        public void Update (Game1 game)
+        public Organism Update (Game1 game)
         {
             Move(-MovePressure*0.5f, game);
             Age++;
@@ -366,7 +372,7 @@ namespace DesignEvolution
                     OrganismDesign.GrowPattern pattern = Design.GrowPatterns[nextGrow];
                     if (pattern.blockType == BlockType.NextGrow)
                     {
-                        nextGrow = pattern.blockNum % Design.GrowPatterns.Count;
+                        nextGrow = (short)(pattern.blockNum % Design.GrowPatterns.Count);
                     }
                     else
                     {
@@ -399,6 +405,8 @@ namespace DesignEvolution
                     }*/
                 }
             }
+
+            return this;
         }
 
         void RunGrower(Point growerPos, Game1 game)
@@ -436,22 +444,18 @@ namespace DesignEvolution
                 {
                     return;
                 }
-                Organism otherBlockOrganism = game.Blocks[copyToPos.X, copyToPos.Y].Controller;
-                if (otherBlockOrganism == null)
+
+                int copyToIdx = game.Blocks[copyToPos.X, copyToPos.Y].ControllerIdx;
+                if (copyToIdx == -1)
                 {
                     Grow(localCopyToPos, copyType, game);
                     return;
                 }
-                else if (otherBlockOrganism != this)
+                else if (copyToIdx != organismIndex)
                 {
                     return;
                 }
             }
-        }
-
-        public Organism ()
-        {
-
         }
     }
 }
