@@ -20,6 +20,7 @@ namespace DesignEvolution
         public short nextGrow;
         public short Age;
         public bool dead;
+        public bool baby; // spawned this frame
 
         public Point WorldPos (Point point)
         {
@@ -59,66 +60,79 @@ namespace DesignEvolution
             return true;
         }
 
+    
         public static OrganismDesign Mutate(OrganismDesign design)
         {
-            List<OrganismDesign.GrowPattern> growPattern = design.GrowPatterns.ToList();
-            OrganismDesign copy = new OrganismDesign
-            {
-                GrowPatterns = growPattern
-            };
+            List<OrganismDesign.GrowPattern> copyPattern;
             switch (Game1.rnd.Next(80))
             {
                 case 0: // change block type
                     {
-                        int index = Game1.rnd.Next(copy.GrowPatterns.Count);
-                        OrganismDesign.GrowPattern p = growPattern[index];
+                        copyPattern = design.GrowPatterns.ToList();
+                        int index = Game1.rnd.Next(copyPattern.Count);
+                        OrganismDesign.GrowPattern p = copyPattern[index];
                         p.blockType = (BlockType)(Game1.rnd.Next(6) + 1);
-                        growPattern[index] = p;
+                        copyPattern[index] = p;
                     }
                     break;
                 case 1: // change direction
                     {
-                        int index = Game1.rnd.Next(copy.GrowPatterns.Count);
-                        OrganismDesign.GrowPattern p = growPattern[index];
+                        copyPattern = design.GrowPatterns.ToList();
+                        int index = Game1.rnd.Next(copyPattern.Count);
+                        OrganismDesign.GrowPattern p = copyPattern[index];
                         p.direction = (Direction)(Game1.rnd.Next(4));
-                        growPattern[index] = p;
+                        copyPattern[index] = p;
                     }
                     break;
                 case 2: // change blockNum
                     {
-                        int index = Game1.rnd.Next(copy.GrowPatterns.Count);
-                        OrganismDesign.GrowPattern p = growPattern[index];
+                        copyPattern = design.GrowPatterns.ToList();
+                        int index = Game1.rnd.Next(copyPattern.Count);
+                        OrganismDesign.GrowPattern p = copyPattern[index];
                         p.blockNum = Game1.rnd.Next(index);
-                        growPattern[index] = p;
+                        copyPattern[index] = p;
                     }
                     break;
                 case 3: // add a block
                     {
-                        if (growPattern.Count < 65535)
+                        if (design.GrowPatterns.Count < 255)
                         {
+                            copyPattern = design.GrowPatterns.ToList();
                             OrganismDesign.GrowPattern p = new OrganismDesign.GrowPattern();
                             p.blockType = (BlockType)(Game1.rnd.Next(7) + 1);
                             p.direction = (Direction)(Game1.rnd.Next(4));
-                            p.blockNum = Game1.rnd.Next(growPattern.Count);
-                            growPattern.Add(p);
+                            p.blockNum = Game1.rnd.Next(copyPattern.Count);
+                            copyPattern.Add(p);
+                        }
+                        else
+                        {
+                            return design;
                         }
                     }
                     break;
                 case 4: // remove a block
                     {
-                        int index = Game1.rnd.Next(copy.GrowPatterns.Count);
-                        growPattern.RemoveAt(index);
-                        for (int Idx = index; Idx < growPattern.Count; ++Idx)
+                        copyPattern = design.GrowPatterns.ToList();
+                        int index = Game1.rnd.Next(copyPattern.Count);
+                        copyPattern.RemoveAt(index);
+                        for (int Idx = index; Idx < copyPattern.Count; ++Idx)
                         {
-                            OrganismDesign.GrowPattern p = growPattern[Idx];
+                            OrganismDesign.GrowPattern p = copyPattern[Idx];
                             if (p.blockNum > index)
                                 p.blockNum--;
-                            growPattern[Idx] = p;
+                            copyPattern[Idx] = p;
                         }
                     }
                     break;
+                default:
+                    return design;
             }
-            return copy;
+
+            OrganismDesign copyDesign = new OrganismDesign
+            {
+                GrowPatterns = copyPattern
+            };
+            return copyDesign;
         }
 
         int GetGrowCost(BlockType type)
@@ -164,7 +178,7 @@ namespace DesignEvolution
 
             if (blockType == BlockType.Heart && reproduce)
             {
-                game.AddOrganism(Create(Mutate(Design), newPos, game));
+                Create(Mutate(Design), newPos, game);
                 return true;
             }
 
@@ -202,10 +216,12 @@ namespace DesignEvolution
                 Pieces.Add(newPiece);
             }
 
-            game.Blocks[newPos.X, newPos.Y].ControllerIdx = organismIndex;
-            game.Blocks[newPos.X, newPos.Y].Type = blockType;
-            game.Blocks[newPos.X, newPos.Y].EnergyAmount = 0;
-            Energy += game.Blocks[newPos.X, newPos.Y].EnergyAmount;
+            Block oldBlock = game.Blocks[newPos.X, newPos.Y];
+            oldBlock.ControllerIdx = organismIndex;
+            oldBlock.Type = blockType;
+            //Energy += oldBlock.EnergyAmount;
+            //oldBlock.EnergyAmount = 0;
+            game.Blocks[newPos.X, newPos.Y] = oldBlock;
             return true;
         }
 
@@ -254,8 +270,8 @@ namespace DesignEvolution
                 }
                 game.Blocks[toCheck.X, toCheck.Y].ControllerIdx = organismIndex;
                 game.Blocks[toCheck.X, toCheck.Y].Type = piece.BlockType;
-                game.Blocks[toCheck.X, toCheck.Y].EnergyAmount = 0;
-                Energy += game.Blocks[toCheck.X, toCheck.Y].EnergyAmount;
+                //Energy += game.Blocks[toCheck.X, toCheck.Y].EnergyAmount;
+                //game.Blocks[toCheck.X, toCheck.Y].EnergyAmount = 0;
             }
             return true;
         }
@@ -303,46 +319,30 @@ namespace DesignEvolution
             }
         }
 
-        public static Organism Create (OrganismDesign design, Point position, Game1 game)
+        public static void Create (OrganismDesign design, Point position, Game1 game)
         {
-            Organism resulting = new Organism
+            Organism newOrganism = new Organism
             {
                 Position = position,
                 FractionalPosition = Vector2.Zero,
                 Design = design,
                 Energy = 38,
-                Pieces = new List<OrganismPiece>(16)
+                Pieces = new List<OrganismPiece>(16),
+                baby = true,
+                nextGrow = (short)(design.GrowPatterns.Count-1)
             };
-            resulting.CreateOrganism(design, game);
-            return resulting;
-        }
 
-        public void CreateOrganism (OrganismDesign design, Game1 game)
-        {
-            Grow(Point.Zero, BlockType.Heart, game, false);
-            //TaskCompletionSource<bool> task = null;
-            //void OnUpdate() { if (!task.Task.IsCompleted) task.SetResult(true); }
-            //game.OnUpdate += OnUpdate;
-            /*foreach (var growPattern in design.GrowPatterns)
-            {
-                Point pos;
-                do
-                {
-                    await (task = new TaskCompletionSource<bool>()).Task;
-                    if (dead)
-                        return;
-                    pos = Game1.ToPoint(growPattern.direction);
-                }
-                while (!Grow(Pieces.Count == 0 ? Point.Zero : Pieces[Math.Min(growPattern.blockNum, Pieces.Count - 1)].Position + pos, growPattern.blockType, game));
-            }
-            game.OnUpdate -= OnUpdate;*/
+            int organismIndex = game.AllocOrganism();
+            newOrganism.organismIndex = organismIndex;
+            newOrganism.Grow(Point.Zero, BlockType.Heart, game, reproduce: false);
+            game.Organisms[organismIndex] = newOrganism;
         }
 
         public void Die (Game1 game)
         {
             dead = true;
             game.RemoveOrganism(organismIndex);
-            game.Blocks[Position.X, Position.Y].EnergyAmount += (byte)Energy;
+            game.Blocks[Position.X, Position.Y].EnergyAmount += (byte)(Energy/2);
             foreach (var piece in Pieces)
             {
                 Point pos = WorldPos(piece.Position);
@@ -350,7 +350,8 @@ namespace DesignEvolution
                 if (block.ControllerIdx == this.organismIndex) // this function might be called while the organism is halfway through moving
                 {
                     block.ControllerIdx = -1;
-                    block.EnergyAmount += (byte)GetGrowCost(piece.BlockType);
+                    //if(block.Type != BlockType.Heart)
+                        //block.EnergyAmount += (byte)GetGrowCost(piece.BlockType);
                     block.Type = BlockType.None;
                     game.Blocks[pos.X, pos.Y] = block;
                 }
@@ -359,6 +360,12 @@ namespace DesignEvolution
         
         public Organism Update (Game1 game)
         {
+            if(baby)
+            {
+                baby = false;
+                return this;
+            }
+
             Move(-MovePressure*0.5f, game);
             Age++;
             if (Age > 1000)
@@ -367,9 +374,9 @@ namespace DesignEvolution
             }
             else if(!dead)
             {
-                if(nextGrow < Design.GrowPatterns.Count)
+                if(nextGrow > 0)
                 {
-                    OrganismDesign.GrowPattern pattern = Design.GrowPatterns[nextGrow];
+                    OrganismDesign.GrowPattern pattern = Design.GrowPatterns[Design.GrowPatterns.Count - 1 - nextGrow];
                     if (pattern.blockType == BlockType.NextGrow)
                     {
                         nextGrow = (short)(pattern.blockNum % Design.GrowPatterns.Count);
@@ -380,30 +387,54 @@ namespace DesignEvolution
                         Point pos = Pieces.Count == 0 ? Point.Zero : Pieces[pieceIdx].Position + Game1.ToPoint(pattern.direction);
                         if (Grow(pos, pattern.blockType, game, pieceIdx:pieceIdx))
                         {
-                            nextGrow++;
+                            nextGrow--;
                         }
                     }
                 }
 
+                bool firstBone = true;
                 foreach (var piece in Pieces)
                 {
                     Point pos = WorldPos(piece.Position);
-                    if (game.Blocks[pos.X, pos.Y].EnergyAmount > 0)
+                    Block block = game.Blocks[pos.X, pos.Y];
+                    if (block.EnergyAmount > 0)
                     {
                         Energy++;
                         game.Blocks[pos.X, pos.Y].EnergyAmount--;
                     }
-                    if (piece.BlockType == BlockType.Leaf)
-                        Energy += game.Blocks[pos.X, pos.Y].SunlightAmount / 1000f;
-                    else if (piece.BlockType == BlockType.Bone)
-                        Energy -= 0.1f;
-                    else if (piece.BlockType == BlockType.Engine)
-                        Energy -= 0.0f;
-                   /* else if (piece.BlockType == BlockType.Grower)
+                    switch (piece.BlockType)
                     {
+                        case BlockType.Leaf:
+                            Energy += block.SunlightAmount / 1000f;
+                            break;
+                        case BlockType.Bone:
+                            if (firstBone)
+                            {
+                                Energy -= 0.05f;
+                                firstBone = false;
+                            }
+                            break;
+                        case BlockType.Buoyancy:
+                            Energy -= 0.1f;
+                            break;
+                        case BlockType.Sinker:
+                            Energy -= 0.1f;
+                            break;
+                        case BlockType.Engine:
+                            Energy -= 0.4f;
+                            break;
+                        case BlockType.Heart:
+                            Energy -= 0.1f;
+                            break;
+                    }
+                   /* case BlockType.Grower:
                         RunGrower(piece.Position, game);
-                    }*/
+                        break;
+                    */
                 }
+
+                if (Energy <= 0)
+                    Die(game);
             }
 
             return this;
