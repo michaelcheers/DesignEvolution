@@ -10,4 +10,6 @@ This sandbox simulates tiny pixelated creatures living, growing, dying, and repr
 * A bone (pink) cannot be destroyed by collisions.
 * A heart (red) is the core of the creature. Every organism always has exactly one, and if it's destroyed, the creature dies. If a new one grows, that's a new organism, i.e. this is how the creatures reproduce.
 
-The simulation starts out with a simple pond-scum creature that simply grows a leaf, and then reproduces twice (when it has absorbed enough energy). But each time it reproduces, there's a chance of mutations occurring, and... who knows what will happen next.
+The simulation starts out with a simple pond-scum creature that simply grows a leaf, and then when it has absorbed enough energy, two hearts (offspring), producing a solid block of organisms. But each time one reproduces, there's a chance of mutations occurring, and pretty soon they're doing who knows what.
+
+![Bubble/Sinker creatures](EvolutionBubbles.png?raw=true "Bubble/sinker creatures")
