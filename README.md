@@ -1,5 +1,5 @@
 # DesignEvolution
-An evolution program.
+An evolution simulator by Michael and Laurie Cheers.
 
 This sandbox simulates tiny pixelated creatures living, growing, dying, and reproducing. Each pixel in their body has a function -
 
