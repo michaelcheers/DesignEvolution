@@ -8,8 +8,8 @@ namespace DesignEvolution
 {
     public struct Block
     {
-        public BlockType Type;
-        public Organism Controller;
-        public byte SunlightAmount, EnergyAmount;
+        public BlockType Type { get { return (BlockType)TypeByte; } set { TypeByte = (byte)value; } }
+        public int ControllerIdx;
+        public byte SunlightAmount, EnergyAmount, TypeByte;
     }
 }

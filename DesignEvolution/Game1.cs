@@ -44,33 +44,31 @@ namespace DesignEvolution
         {
             graphics = new GraphicsDeviceManager(this)
             {
-                PreferredBackBufferWidth = 1920,
-                PreferredBackBufferHeight = 1080,
+                PreferredBackBufferWidth = worldWidth*3,
+                PreferredBackBufferHeight = worldHeight*3,
                 IsFullScreen = true,
             };
             Content.RootDirectory = "Content";
             IsMouseVisible = true;
         }
 
-        public void AddOrganism(Organism o)
+        public int AllocOrganism()
         {
             if (freeOrganismSlots.Count > 0)
             {
-                o.organismIndex = freeOrganismSlots.Dequeue();
-                Organisms[o.organismIndex] = o;
+                return freeOrganismSlots.Dequeue();
             }
             else
             {
-                o.organismIndex = Organisms.Count;
-                Organisms.Add(o);
+                Organisms.Add(new Organism() { });
+                return Organisms.Count - 1;
             }
         }
 
-
-        public void RemoveOrganism(Organism o)
+        public void RemoveOrganism(int index)
         {
-            Organisms[o.organismIndex] = null;
-            freeOrganismSlots.Enqueue(o.organismIndex);
+            Organisms[index] = new Organism() { dead = true };
+            freeOrganismSlots.Enqueue(index);
         }
 
         Texture2D rectangle;
@@ -125,9 +123,11 @@ namespace DesignEvolution
                     }
                 }, new Point(100, 476), this
             ));*/
+            for (int x = 0; x < worldWidth; x++)
+                for (int y = 0; y < worldHeight; y++)
+                    Blocks[x, y].ControllerIdx = -1;
 
-
-            Organisms.Add(Organism.Create(
+            Organism.Create(
                             new OrganismDesign
                             {
                                 GrowPatterns = new List<OrganismDesign.GrowPattern>
@@ -165,9 +165,9 @@ namespace DesignEvolution
                                     }*/
                                 }
                             }
-                            , new Point(100, 100), this));
+                            , new Point(100, 100), this);
 
-            toDraw = new Texture2D(GraphicsDevice, worldWidth, worldHeight);
+            lightTexture = new Texture2D(GraphicsDevice, worldWidth, worldHeight);
             UpdateFoodAndLight();
 
             base.Initialize();
@@ -248,27 +248,29 @@ namespace DesignEvolution
         void Step()
         {
             UpdateFoodAndLight();
-            foreach (var org in Organisms.ToArray())
+            for(int Idx = 0; Idx < Organisms.Count; ++Idx)
             {
-                if (org != null && !org.dead)
-                    org.Update(this);
+                Organism localOrg = Organisms[Idx];
+                if (!localOrg.dead)
+                    Organisms[Idx] = localOrg.Update(this);
             }
             OnUpdate?.Invoke();
         }
 
         void UpdateFoodAndLightTexture ()
         {
-            for (int x = 0; x < worldWidth; x++)
+            for (int y = 0; y < worldHeight; y++)
             {
-                for (int y = 0; y < worldHeight; y++)
+                for (int x = 0; x < worldWidth; x++)
                 {
                     Block b = Blocks[x, y];
                     byte sun = b.SunlightAmount;
                     byte food = b.EnergyAmount;
-                    lightPixels[x + y * worldWidth] = new Color(sun/2, food, 128+sun/2);
+                    byte foodVis = food == 0 ? (byte)0 : Math.Min((byte)(25 + food), (byte)255);
+                    lightPixels[x + y * worldWidth] = new Color(sun, sun/2+ foodVis / 2, 128-sun/4+ foodVis / 2);
                 }
             }
-            toDraw.SetData(lightPixels);
+            lightTexture.SetData(lightPixels);
         }
 
         void UpdateFoodAndLight()
@@ -277,7 +279,7 @@ namespace DesignEvolution
             {
                 Blocks[x, 0].SunlightAmount = 255;
             }
-            for (int y = 1; y < Blocks.GetLength(1); y++)
+            for (int y = Blocks.GetLength(1) - 1; y > 0; y--)
             {
                 for (int x = 0; x < Blocks.GetLength(0); x++)
                 {
@@ -285,38 +287,44 @@ namespace DesignEvolution
                     byte energyHere = Blocks[x, y].EnergyAmount;
                     if (energyAbove > 0 && energyHere < 255)
                     {
-                        Blocks[x, y].EnergyAmount++;
-                        energyHere++;
-                        Blocks[x, y - 1].EnergyAmount--;
+                        byte energyDelta = Math.Min((byte)(energyAbove-energyAbove / 2), (byte)(255-energyHere));
+                        Blocks[x, y].EnergyAmount += energyDelta;
+                        Blocks[x, y - 1].EnergyAmount -= energyDelta;
                     }
+                }
+            }
 
-                    /*
-                    if (x > 0)
-                    {
-                        byte energyAdjacent = Blocks[x - 1, y].EnergyAmount;
-                        int delta = energyAdjacent - energyHere;
-                        if(delta > 1)
-                        {
-                            Blocks[x, y].EnergyAmount++;
-                            Blocks[x - 1, y].EnergyAmount--;
-                        }
-                        else if (delta < -1)
-                        {
-                            Blocks[x, y].EnergyAmount--;
-                            Blocks[x - 1, y].EnergyAmount++;
-                        }
-                    }
-                    */
+            /*
+            if (x > 0)
+            {
+                byte energyAdjacent = Blocks[x - 1, y].EnergyAmount;
+                int delta = energyAdjacent - energyHere;
+                if(delta > 1)
+                {
+                    Blocks[x, y].EnergyAmount++;
+                    Blocks[x - 1, y].EnergyAmount--;
+                }
+                else if (delta < -1)
+                {
+                    Blocks[x, y].EnergyAmount--;
+                    Blocks[x - 1, y].EnergyAmount++;
+                }
+            }
+            */
 
+            for (int y = 1; y < Blocks.GetLength(1); y++)
+            {
+                for (int x = 0; x < Blocks.GetLength(0); x++)
+                {
                     if (Blocks[x, y - 1].Type == BlockType.None)
                         Blocks[x, y].SunlightAmount = (byte)Math.Max(0, Blocks[x, y - 1].SunlightAmount - ((y%2==0)?1:0));
                     else
                         Blocks[x, y].SunlightAmount = (byte)Math.Max(0, Blocks[x, y - 1].SunlightAmount - ((y % 2 == 0) ? 2 : 1));
                 }
             }
-            if (DateTime.Now >= nextUpdateOfTexture)
+            //if (DateTime.Now >= nextUpdateOfTexture)
             {
-                nextUpdateOfTexture = DateTime.Now + TimeSpan.FromSeconds(1);
+                nextUpdateOfTexture = DateTime.Now + TimeSpan.FromSeconds(0.1f);
                 UpdateFoodAndLightTexture();
             }
         }
@@ -345,7 +353,7 @@ namespace DesignEvolution
             return n;
         }
 
-        Texture2D toDraw;
+        Texture2D lightTexture;
 
         /// <summary>
         /// This is called when the game should draw itself.
@@ -360,10 +368,11 @@ namespace DesignEvolution
             int maxX = Clamp((int)((GraphicsDevice.Viewport.Width - offset.X)/zoom) + 1, 0, Blocks.GetLength(0));
             int minY = Clamp((int)(-offset.Y / zoom), 0, Blocks.GetLength(1));
             int maxY = Clamp((int)((GraphicsDevice.Viewport.Height - offset.Y) / zoom) + 1, 0, Blocks.GetLength(1));
-            spriteBatch.Draw(toDraw, new Vectangle(offset, new Vector2(Blocks.GetLength(0) * zoom, Blocks.GetLength(1) * zoom)), Color.White);
-            for (int x = minX; x < maxX; x++)
+            spriteBatch.Draw(lightTexture, new Vectangle(offset, new Vector2(Blocks.GetLength(0) * zoom, Blocks.GetLength(1) * zoom)), Color.White);
+
+            for (int y = minY; y < maxY; y++)
             {
-                for (int y = minY; y < maxY; y++)
+                for (int x = minX; x < maxX; x++)
                 {
                     BlockType typeXY = Blocks[x, y].Type;
                     if (typeXY == BlockType.None)
