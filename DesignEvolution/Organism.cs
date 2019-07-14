@@ -170,11 +170,15 @@ namespace DesignEvolution
             if (newPos.Y < 0 || newPos.Y >= Game1.worldHeight)
                 return true;
 
-            if ((game.Blocks[newPos.X, newPos.Y].ControllerIdx != -1 &&
-                blockType != BlockType.None))
-                return true;
+            int replaceIdx = game.Blocks[newPos.X, newPos.Y].ControllerIdx;
+            bool replaceSelf = replaceIdx == organismIndex && game.Blocks[newPos.X, newPos.Y].Type != BlockType.Heart;
+            if (replaceIdx != -1 && !replaceSelf)
+                return true; // growth blocked
 
             Energy -= growCost;
+
+            if (replaceSelf)
+                DestroyBlock(newPos, game);
 
             if (blockType == BlockType.Heart && reproduce)
             {
