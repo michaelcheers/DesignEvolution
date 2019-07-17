@@ -71,7 +71,7 @@ namespace DesignEvolution
                         copyPattern = design.GrowPatterns.ToList();
                         int index = Game1.rnd.Next(copyPattern.Count);
                         OrganismDesign.GrowPattern p = copyPattern[index];
-                        p.blockType = (BlockType)(Game1.rnd.Next(6) + 1);
+                        p.blockType = (BlockType)(Game1.rnd.Next(7) + 1);
                         copyPattern[index] = p;
                     }
                     break;
@@ -89,19 +89,19 @@ namespace DesignEvolution
                         copyPattern = design.GrowPatterns.ToList();
                         int index = Game1.rnd.Next(copyPattern.Count);
                         OrganismDesign.GrowPattern p = copyPattern[index];
-                        p.blockNum = Game1.rnd.Next(index);
+                        p.blockNum = (byte)Game1.rnd.Next(index);
                         copyPattern[index] = p;
                     }
                     break;
                 case 3: // add a block
                     {
-                        if (design.GrowPatterns.Count < 255)
+                        if (design.GrowPatterns.Count < 16)
                         {
                             copyPattern = design.GrowPatterns.ToList();
                             OrganismDesign.GrowPattern p = new OrganismDesign.GrowPattern();
                             p.blockType = (BlockType)(Game1.rnd.Next(7) + 1);
                             p.direction = (Direction)(Game1.rnd.Next(4));
-                            p.blockNum = Game1.rnd.Next(copyPattern.Count);
+                            p.blockNum = (byte)Game1.rnd.Next(copyPattern.Count);
                             copyPattern.Add(p);
                         }
                         else
@@ -411,18 +411,11 @@ namespace DesignEvolution
                         case BlockType.Leaf:
                             Energy += block.SunlightAmount / 1000f;
                             break;
-                        case BlockType.Bone:
-                            if (firstBone)
-                            {
-                                Energy -= 0.05f;
-                                firstBone = false;
-                            }
-                            break;
                         case BlockType.Buoyancy:
-                            Energy -= 0.1f;
+                            Energy -= 0.15f;
                             break;
                         case BlockType.Sinker:
-                            Energy -= 0.1f;
+                            Energy -= 0.15f;
                             break;
                         case BlockType.Engine:
                             Energy -= 0.4f;
