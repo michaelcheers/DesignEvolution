@@ -46,7 +46,7 @@ namespace DesignEvolution
             {
                 PreferredBackBufferWidth = worldWidth*3,
                 PreferredBackBufferHeight = worldHeight*3,
-                IsFullScreen = true,
+                //IsFullScreen = true,
             };
             Content.RootDirectory = "Content";
             IsMouseVisible = true;
@@ -83,6 +83,7 @@ namespace DesignEvolution
         protected override void Initialize()
         {
             int seed = new Random().Next();
+            seed = 1140187476;
             System.IO.File.WriteAllText("seed.txt", seed.ToString());
 
             rnd = new Random(seed);
@@ -275,13 +276,11 @@ namespace DesignEvolution
 
         void UpdateFoodAndLight()
         {
-            for (int x = 0; x < Blocks.GetLength(0); x++)
+            int gridHeight = Blocks.GetLength(1);
+            int gridWidth = Blocks.GetLength(0);
+            for (int y = gridHeight - 1; y > 0; y--)
             {
-                Blocks[x, 0].SunlightAmount = 255;
-            }
-            for (int y = Blocks.GetLength(1) - 1; y > 0; y--)
-            {
-                for (int x = 0; x < Blocks.GetLength(0); x++)
+                for (int x = 0; x < gridWidth; x++)
                 {
                     byte energyAbove = Blocks[x, y - 1].EnergyAmount;
                     byte energyHere = Blocks[x, y].EnergyAmount;
@@ -312,20 +311,57 @@ namespace DesignEvolution
             }
             */
 
-            for (int y = 1; y < Blocks.GetLength(1); y++)
+            int width = Blocks.GetLength(0);
+            int height = Blocks.GetLength(1);
+            for (int y = 0; y < height; y++)
             {
-                for (int x = 0; x < Blocks.GetLength(0); x++)
+                for (int x = 0; x < width; x++)
                 {
-                    if (Blocks[x, y - 1].Type == BlockType.None)
-                        Blocks[x, y].SunlightAmount = (byte)Math.Max(0, Blocks[x, y - 1].SunlightAmount - ((y%2==0)?1:0));
+                    Block block = Blocks[x, y];
+                    if (y <= 0)
+                    {
+                        block.SunlightAmount = 255;
+                    }
                     else
-                        Blocks[x, y].SunlightAmount = (byte)Math.Max(0, Blocks[x, y - 1].SunlightAmount - ((y % 2 == 0) ? 2 : 1));
+                    {
+                        Block blockAbove = Blocks[x, y - 1];
+                        block.SunlightAmount = (byte)Math.Max(0,
+                            blockAbove.SunlightAmount - (((y % 2 == 0) ? 1 : 0) + (blockAbove.Type == BlockType.None? 0: 1))
+                        );
+                    }
+
+                    if (block.ControllerIdx >= 0)
+                    {
+                        Organism organism = Organisms[block.ControllerIdx];
+                        if (block.EnergyAmount > 0)
+                        {
+                            organism.Energy++;
+                            block.EnergyAmount--;
+                        }
+                        switch (block.Type)
+                        {
+                            case BlockType.Leaf:
+                                organism.Energy += block.SunlightAmount / 1000f;
+                                break;
+                            case BlockType.Buoyancy:
+                                organism.Energy -= 0.15f;
+                                break;
+                            case BlockType.Sinker:
+                                organism.Energy -= 0.15f;
+                                break;
+                            case BlockType.Engine:
+                                organism.Energy -= 0.4f;
+                                break;
+                            case BlockType.Heart:
+                                organism.Energy -= 0.1f;
+                                break;
+                        }
+
+                        Organisms[block.ControllerIdx] = organism;
+                    }
+
+                    Blocks[x, y] = block;
                 }
-            }
-            //if (DateTime.Now >= nextUpdateOfTexture)
-            {
-                nextUpdateOfTexture = DateTime.Now + TimeSpan.FromSeconds(0.1f);
-                UpdateFoodAndLightTexture();
             }
         }
 
@@ -361,6 +397,12 @@ namespace DesignEvolution
         /// <param name="gameTime">Provides a snapshot of timing values.</param>
         protected override void Draw(GameTime gameTime)
         {
+            if (DateTime.Now >= nextUpdateOfTexture)
+            {
+                nextUpdateOfTexture = DateTime.Now + TimeSpan.FromSeconds(0.08f);
+                UpdateFoodAndLightTexture();
+            }
+
             GraphicsDevice.Clear(Color.White);
 
             spriteBatch.Begin();

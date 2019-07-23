@@ -7,9 +7,73 @@ using System.Threading.Tasks;
 
 namespace DesignEvolution
 {
+    public struct Cache4<T>
+    {
+        public static T defaultValue;
+        public T first, second, third, fourth;
+            get
+            {
+                switch (idx)
+                {
+                    case 0: return first;
+                    case 1: return second;
+                    case 2: return third;
+                    case 3: return fourth;
+                    default:
+                        throw new IndexOutOfRangeException("Get - Index " + idx + " is not supported by Cache4");
+                }
+            }
+
+            set
+            {
+                switch (idx)
+                {
+                    case 0: first = value; break;
+                    case 1: second = value; break;
+                    case 2: third = value; break;
+                    case 3: fourth = value; break;
+                    default:
+                        throw new IndexOutOfRangeException("Set - Index " + idx + " is not supported by Cache4");
+                }
+            }
+        }
+
+        public void FillFrom(List<T> array, int first)
+        {
+            if (first < array.Count)
+                this.first = array[first];
+            else
+                this.first = defaultValue;
+
+            if (first + 1 < array.Count)
+                second = array[first + 1];
+            else
+                this.first = defaultValue;
+
+            if (first + 2 < array.Count)
+                third = array[first + 2];
+            else
+                this.first = defaultValue;
+
+            if (first + 3 < array.Count)
+                fourth = array[first + 3];
+            else
+                this.first = defaultValue;
+        }
+
+        public void ShiftDown()
+        {
+            first = second;
+            second = third;
+            third = fourth;
+            fourth = defaultValue;
+        }
+    }
+
     public struct Organism
     {
         public OrganismDesign Design;
+        Cache4<OrganismDesign.GrowPattern> designCache;
         public List<OrganismPiece> Pieces;
 
         public int organismIndex;
@@ -19,8 +83,46 @@ namespace DesignEvolution
         public Vector2 MovePressure;
         public short nextGrow;
         public short Age;
-        public bool dead;
-        public bool baby; // spawned this frame
+
+        enum OrganismFlags
+        {
+            Dead = 1,
+            Baby = 2, // spawned this frame
+            HasBones = 4
+        }
+        byte _flags;
+        public bool dead
+        {
+            get { return (_flags & (int)OrganismFlags.Dead) != 0; }
+            set
+            {
+                if (value) { _flags |= (byte)OrganismFlags.Dead; }
+                else if(dead) { _flags -= (byte)OrganismFlags.Dead; }
+            }
+        }
+        public bool baby
+        {
+            get { return (_flags & (int) OrganismFlags.Baby) != 0; }
+            set
+            {
+                if (value) { _flags |= (byte) OrganismFlags.Baby; }
+                else if(baby) { _flags -= (byte) OrganismFlags.Baby; }
+            }
+        }
+        public bool hasBones
+        {
+            get { return (_flags & (int)OrganismFlags.HasBones) != 0; }
+            set
+            {
+                if (value) { _flags |= (byte)OrganismFlags.HasBones; }
+                else if (hasBones) { _flags -= (byte)OrganismFlags.HasBones; }
+            }
+        }
+
+        byte _minY;
+        byte _maxY;
+        public int minY { get { return -_minY; } set { _minY = (byte)(-value); } }
+        public int maxY { get { return _maxY; } set { _maxY = (byte)value; } }
 
         public Point WorldPos (Point point)
         {
@@ -39,12 +141,43 @@ namespace DesignEvolution
 
         public struct OrganismPiece
         {
-            public Point Position;
-            public BlockType BlockType;
+            byte PosX;
+            byte PosY;
+            public Point Position {
+                get {
+                    return new Point(PosX - 128, PosY - 128);
+                }
+                set {
+                    PosX = (byte)(value.X+128);
+                    PosY = (byte)(value.Y+128);
+                }
+            }
+            byte _blockTypeByte;
+            public BlockType BlockType
+            {
+                get { return (BlockType)_blockTypeByte; }
+                set { _blockTypeByte = (byte)value; }
+            }
         }
 
         public bool CanMove(Point offsetPosition, Game1 game)
         {
+            Point minYPos = WorldPos(offsetPosition + new Point(0, minY));
+            Point maxYPos = WorldPos(offsetPosition + new Point(0, maxY));
+
+            if (minYPos.Y < 0 || maxYPos.Y >= game.Blocks.GetLength(1))
+                return false;
+
+            Point heartPos = WorldPos(offsetPosition + new Point(0, 0));
+            if(heartPos.Y < 0)
+            {
+                int breakhere = 1;
+                breakhere++;
+            }
+
+            if (!hasBones)
+                return true;
+
             foreach (OrganismPiece piece in Pieces)
             {
                 Point toCheck = WorldPos(offsetPosition + piece.Position);
@@ -170,15 +303,18 @@ namespace DesignEvolution
             if (newPos.Y < 0 || newPos.Y >= Game1.worldHeight)
                 return true;
 
-            int replaceIdx = game.Blocks[newPos.X, newPos.Y].ControllerIdx;
-            bool replaceSelf = replaceIdx == organismIndex && game.Blocks[newPos.X, newPos.Y].Type != BlockType.Heart;
+            Block targetBlock = game.Blocks[newPos.X, newPos.Y];
+            int replaceIdx = targetBlock.ControllerIdx;
+            bool replaceSelf = replaceIdx == organismIndex && targetBlock.Type != BlockType.Heart;
             if (replaceIdx != -1 && !replaceSelf)
                 return true; // growth blocked
 
             Energy -= growCost;
 
             if (replaceSelf)
+            {
                 DestroyBlock(newPos, game);
+            }
 
             if (blockType == BlockType.Heart && reproduce)
             {
@@ -220,6 +356,12 @@ namespace DesignEvolution
                 Pieces.Add(newPiece);
             }
 
+            if (blockType == BlockType.Bone)
+                hasBones = true;
+
+            minY = Math.Min(minY, positionRelativeToHeart.Y);
+            maxY = Math.Max(maxY, positionRelativeToHeart.Y);
+
             Block oldBlock = game.Blocks[newPos.X, newPos.Y];
             oldBlock.ControllerIdx = organismIndex;
             oldBlock.Type = blockType;
@@ -247,7 +389,9 @@ namespace DesignEvolution
                 game.Blocks[toCheck.X, toCheck.Y].ControllerIdx = -1;
                 game.Blocks[toCheck.X, toCheck.Y].Type = BlockType.None;
             }
+
             Position = WorldPos(offsetMovePosition);
+
             OrganismPiece[] piecesCopy = new OrganismPiece[Pieces.Count];
             Pieces.CopyTo(piecesCopy);
             foreach (OrganismPiece piece in piecesCopy)
@@ -292,11 +436,21 @@ namespace DesignEvolution
             }
             game.Blocks[absolutePosition.X, absolutePosition.Y].EnergyAmount += 5;
             Point posToDestroy = LocalPos(absolutePosition);
+            int newMinY = 0;
+            int newMaxY = 0;
+            bool hasOtherBone = false;
             for(int pieceIdx = 0; pieceIdx < Pieces.Count; ++pieceIdx)
             {
                 OrganismPiece piece = Pieces[pieceIdx];
+
                 if (piece.Position != posToDestroy)
+                {
+                    newMinY = Math.Min(newMinY, piece.Position.Y);
+                    newMaxY = Math.Max(newMaxY, piece.Position.Y);
+                    if (piece.BlockType == BlockType.Bone)
+                        hasOtherBone = true;
                     continue;
+                }
 
                 switch(piece.BlockType)
                 {
@@ -319,8 +473,12 @@ namespace DesignEvolution
                         break;
                 }
                 Pieces.RemoveAt(pieceIdx);
-                return;
+                pieceIdx--;
             }
+
+            minY = newMinY;
+            maxY = newMaxY;
+            hasBones = hasOtherBone;
         }
 
         public static void Create (OrganismDesign design, Point position, Game1 game)
@@ -335,6 +493,8 @@ namespace DesignEvolution
                 baby = true,
                 nextGrow = (short)(design.GrowPatterns.Count-1)
             };
+
+            newOrganism.designCache.FillFrom(design.GrowPatterns, 0);
 
             int organismIndex = game.AllocOrganism();
             newOrganism.organismIndex = organismIndex;
@@ -372,7 +532,7 @@ namespace DesignEvolution
 
             Move(-MovePressure*0.5f, game);
             Age++;
-            if (Age > 1000)
+            if (Age > 1000 || Energy <= 0)
             {
                 Die(game);
             }
@@ -380,7 +540,18 @@ namespace DesignEvolution
             {
                 if(nextGrow > 0)
                 {
-                    OrganismDesign.GrowPattern pattern = Design.GrowPatterns[Design.GrowPatterns.Count - 1 - nextGrow];
+                    OrganismDesign.GrowPattern pattern = designCache.first;
+                    if (pattern.blockType == BlockType.None)
+                    {
+                        int patternIdx = Design.GrowPatterns.Count - 1 - nextGrow;
+                        pattern = Design.GrowPatterns[patternIdx];
+                        designCache.FillFrom(Design.GrowPatterns, patternIdx+1);
+                    }
+                    else
+                    {
+                        designCache.ShiftDown();
+                    }
+
                     if (pattern.blockType == BlockType.NextGrow)
                     {
                         nextGrow = (short)(pattern.blockNum % Design.GrowPatterns.Count);
@@ -396,6 +567,7 @@ namespace DesignEvolution
                     }
                 }
 
+                /*
                 bool firstBone = true;
                 foreach (var piece in Pieces)
                 {
@@ -427,11 +599,8 @@ namespace DesignEvolution
                    /* case BlockType.Grower:
                         RunGrower(piece.Position, game);
                         break;
-                    */
-                }
-
-                if (Energy <= 0)
-                    Die(game);
+                    * /
+                }*/
             }
 
             return this;
