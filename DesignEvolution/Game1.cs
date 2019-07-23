@@ -83,7 +83,7 @@ namespace DesignEvolution
         protected override void Initialize()
         {
             int seed = new Random().Next();
-            seed = 1140187476;
+            //seed = 1140187476;
             System.IO.File.WriteAllText("seed.txt", seed.ToString());
 
             rnd = new Random(seed);
