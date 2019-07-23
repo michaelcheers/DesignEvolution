@@ -11,6 +11,9 @@ namespace DesignEvolution
     {
         public static T defaultValue;
         public T first, second, third, fourth;
+
+        public T this[int idx]
+        {
             get
             {
                 switch (idx)
