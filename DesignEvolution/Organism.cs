@@ -85,6 +85,7 @@ namespace DesignEvolution
         public Vector2 FractionalPosition;
         public Vector2 MovePressure;
         public short nextGrow;
+        public short growFail;
         public short Age;
 
         enum OrganismFlags
@@ -235,7 +236,7 @@ namespace DesignEvolution
                         {
                             copyPattern = design.GrowPatterns.ToList();
                             OrganismDesign.GrowPattern p = new OrganismDesign.GrowPattern();
-                            p.blockType = (BlockType)(Game1.rnd.Next(7) + 1);
+                            p.blockType = (BlockType)(Game1.rnd.Next(8) + 1);
                             p.direction = (Direction)(Game1.rnd.Next(4));
                             p.blockNum = (byte)Game1.rnd.Next(copyPattern.Count);
                             copyPattern.Add(p);
@@ -293,8 +294,10 @@ namespace DesignEvolution
             {BlockType.Sinker, 1 },
         };*/
 
-        public bool Grow(Point positionRelativeToHeart, BlockType blockType, Game1 game, bool reproduce = true, int pieceIdx = 0)
+        public bool Grow(Point positionRelativeToHeart, BlockType blockType, Game1 game, out bool blocked, bool reproduce = true, int pieceIdx = 0)
         {
+            blocked = false;
+
             if (Pieces.Count > 15)
                 return false;
 
@@ -304,19 +307,25 @@ namespace DesignEvolution
 
             Point newPos = WorldPos(positionRelativeToHeart);
             if (newPos.Y < 0 || newPos.Y >= Game1.worldHeight)
-                return true;
+            {
+                blocked = true;
+                return false; // growth blocked by edge of world
+            }
 
             Block targetBlock = game.Blocks[newPos.X, newPos.Y];
             int replaceIdx = targetBlock.ControllerIdx;
             bool replaceSelf = replaceIdx == organismIndex && targetBlock.Type != BlockType.Heart;
             if (replaceIdx != -1 && !replaceSelf)
-                return true; // growth blocked
+            {
+                blocked = true;
+                return false; // growth blocked by obstacle
+            }
 
             Energy -= growCost;
 
             if (replaceSelf)
             {
-                DestroyBlock(newPos, game);
+                DestroyBlock(newPos, game, true);
             }
 
             if (blockType == BlockType.Heart && reproduce)
@@ -427,7 +436,7 @@ namespace DesignEvolution
             return true;
         }
 
-        public void DestroyBlock (Point absolutePosition, Game1 game)
+        public void DestroyBlock (Point absolutePosition, Game1 game, bool eatingSelf = false)
         {
             if (dead)
                 return;
@@ -437,7 +446,9 @@ namespace DesignEvolution
                 game.Blocks[absolutePosition.X, absolutePosition.Y].ControllerIdx = -1;
                 game.Blocks[absolutePosition.X, absolutePosition.Y].Type = BlockType.None;
             }
-            game.Blocks[absolutePosition.X, absolutePosition.Y].EnergyAmount += 5;
+            if(!eatingSelf)
+                game.Blocks[absolutePosition.X, absolutePosition.Y].EnergyAmount += 1;
+
             Point posToDestroy = LocalPos(absolutePosition);
             int newMinY = 0;
             int newMaxY = 0;
@@ -494,14 +505,16 @@ namespace DesignEvolution
                 Energy = 38,
                 Pieces = new List<OrganismPiece>(16),
                 baby = true,
-                nextGrow = (short)(design.GrowPatterns.Count-1)
+                nextGrow = (short)(design.GrowPatterns.Count - 1),
+                growFail = -1
             };
 
             newOrganism.designCache.FillFrom(design.GrowPatterns, 0);
 
             int organismIndex = game.AllocOrganism();
             newOrganism.organismIndex = organismIndex;
-            newOrganism.Grow(Point.Zero, BlockType.Heart, game, reproduce: false);
+            bool blocked;
+            newOrganism.Grow(Point.Zero, BlockType.Heart, game, out blocked, reproduce: false);
             game.Organisms[organismIndex] = newOrganism;
         }
 
@@ -559,13 +572,23 @@ namespace DesignEvolution
                     {
                         nextGrow = (short)(pattern.blockNum % Design.GrowPatterns.Count);
                     }
+                    else if(pattern.blockType == BlockType.GrowFail)
+                    {
+                        growFail = (short)(pattern.blockNum % Design.GrowPatterns.Count);
+                    }
                     else
                     {
                         int pieceIdx = Math.Min(pattern.blockNum, Pieces.Count - 1);
                         Point pos = Pieces.Count == 0 ? Point.Zero : Pieces[pieceIdx].Position + Game1.ToPoint(pattern.direction);
-                        if (Grow(pos, pattern.blockType, game, pieceIdx:pieceIdx))
+                        bool blocked = false;
+                        if (Grow(pos, pattern.blockType, game, out blocked, pieceIdx:pieceIdx))
                         {
                             nextGrow--;
+                        }
+
+                        if (blocked && growFail >= 0)
+                        {
+                            nextGrow = growFail;
                         }
                     }
                 }
@@ -648,7 +671,8 @@ namespace DesignEvolution
                 int copyToIdx = game.Blocks[copyToPos.X, copyToPos.Y].ControllerIdx;
                 if (copyToIdx == -1)
                 {
-                    Grow(localCopyToPos, copyType, game);
+                    bool blocked;
+                    Grow(localCopyToPos, copyType, game, out blocked);
                     return;
                 }
                 else if (copyToIdx != organismIndex)

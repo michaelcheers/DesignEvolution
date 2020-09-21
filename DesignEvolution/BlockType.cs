@@ -17,5 +17,6 @@ namespace DesignEvolution
         Bone,
         Sinker,
         NextGrow,
+        GrowFail,
     }
 }

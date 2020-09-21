@@ -83,7 +83,7 @@ namespace DesignEvolution
         protected override void Initialize()
         {
             int seed = new Random().Next();
-            //seed = 1140187476;
+            //seed = 865748883;
             System.IO.File.WriteAllText("seed.txt", seed.ToString());
 
             rnd = new Random(seed);
@@ -311,6 +311,8 @@ namespace DesignEvolution
             }
             */
 
+            //int[] orgOffsets = new int[Organisms.Count]; // the organism from Organisms[X] has moved to Organisms[X + orgOffsets[X]]
+            //int nextAssignableOrganism = 0;
             int width = Blocks.GetLength(0);
             int height = Blocks.GetLength(1);
             for (int y = 0; y < height; y++)
@@ -332,6 +334,40 @@ namespace DesignEvolution
 
                     if (block.ControllerIdx >= 0)
                     {
+                        // swap the organisms at index <block.ControllerIdx> and index <nextAssignableOrganism>
+                        // (unless the former has already been assigned an earlier slot)
+/*                        int currentReassignedIdx = block.ControllerIdx + orgOffsets[block.ControllerIdx];
+                        Organism organism = Organisms[currentReassignedIdx];
+
+                        if (currentReassignedIdx > nextAssignableOrganism)
+                        {
+                            Organism swappedOut = Organisms[nextAssignableOrganism];
+                            Organisms[currentReassignedIdx] = swappedOut;
+
+                            int swapOffset = currentReassignedIdx - nextAssignableOrganism;
+                            orgOffsets[block.ControllerIdx] -= swapOffset;
+                            orgOffsets[swappedOut.organismIndex] += swapOffset;
+
+                            block.ControllerIdx = nextAssignableOrganism;
+
+                            // NB we DO NOT change <swappedOut.organismIndex> here. If it swaps again, we'll need
+                            // the original organismIndex so that we can find and write to its orgOffset.
+                            // <organism> cannot swap again, so it's safe to update its organismIndex.
+                            organism.organismIndex = nextAssignableOrganism;
+                            nextAssignableOrganism++;
+                        }
+                        else
+                        {
+                            block.ControllerIdx = currentReassignedIdx;
+
+                            if (currentReassignedIdx == nextAssignableOrganism)
+                            {
+                                // the organism happened to already be at the right slot, finalize it but no swap required
+                                organism.organismIndex = nextAssignableOrganism;
+                                nextAssignableOrganism++;
+                            }
+                        }*/
+
                         Organism organism = Organisms[block.ControllerIdx];
                         if (block.EnergyAmount > 0)
                         {
@@ -343,14 +379,17 @@ namespace DesignEvolution
                             case BlockType.Leaf:
                                 organism.Energy += block.SunlightAmount / 1000f;
                                 break;
+                            case BlockType.Bone:
+                                organism.Energy -= 0.02f;
+                                break;
                             case BlockType.Buoyancy:
-                                organism.Energy -= 0.15f;
+                                organism.Energy -= 0.1f;
                                 break;
                             case BlockType.Sinker:
-                                organism.Energy -= 0.15f;
+                                organism.Energy -= 0.1f;
                                 break;
                             case BlockType.Engine:
-                                organism.Energy -= 0.4f;
+                                organism.Energy -= 0.2f;
                                 break;
                             case BlockType.Heart:
                                 organism.Energy -= 0.1f;
@@ -363,6 +402,9 @@ namespace DesignEvolution
                     Blocks[x, y] = block;
                 }
             }
+
+            //Organisms.RemoveRange(nextAssignableOrganism, Organisms.Count- nextAssignableOrganism);
+            //freeOrganismSlots.Clear();
         }
 
         static readonly Dictionary<BlockType, Color> colors = new Dictionary<BlockType, Color>
@@ -419,8 +461,8 @@ namespace DesignEvolution
                     BlockType typeXY = Blocks[x, y].Type;
                     if (typeXY == BlockType.None)
                         continue;
-                    if (typeXY == BlockType.Bone)
-                        ;
+                    //if (typeXY == BlockType.Bone)
+                        //;
                     Vector2 pos = new Vector2(x * zoom + offset.X, y * zoom + offset.Y);
                     spriteBatch.Draw(rectangle, new Vectangle(pos, new Vector2(zoom)), colors[typeXY]);
                 }
